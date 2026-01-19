@@ -2,7 +2,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider } from './shared/contexts/AuthContext';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
