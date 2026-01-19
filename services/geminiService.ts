@@ -1,9 +1,13 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 
-// Always initialize GoogleGenAI with a named parameter using process.env.API_KEY directly.
+// Always initialize GoogleGenAI with a named parameter using import.meta.env
 const getAIClient = () => {
-  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("An API Key must be set when running in a browser");
+  }
+  return new GoogleGenAI({ apiKey });
 };
 
 export const generateProjectBreakdown = async (projectTitle: string, description: string) => {
@@ -40,12 +44,21 @@ export const generateProjectBreakdown = async (projectTitle: string, description
   }
 };
 
-export const generateStudyPlan = async (examCourse: string, examDate: string) => {
+export const generateStudyPlan = async (examCourse: string, examDate: string, examNotes?: string) => {
   const ai = getAIClient();
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: `Create a concise 5-day study plan for the exam: ${examCourse} scheduled on ${examDate}. 
-    Focus on key preparation steps.`,
+    contents: `Create a detailed 7-10 day comprehensive study plan for the exam: ${examCourse} scheduled on ${examDate}.
+    ${examNotes ? `Additional context: ${examNotes}` : ''}
+    
+    Include:
+    - Daily focus topics with specific chapters/concepts
+    - Concrete actionable steps (what to read, practice, review)
+    - Estimated time allocation in hours
+    - Practice exercises or problems to solve
+    - Review strategies for better retention
+    
+    Make it practical and realistic for a university student.`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -53,22 +66,48 @@ export const generateStudyPlan = async (examCourse: string, examDate: string) =>
         items: {
           type: Type.OBJECT,
           properties: {
-            day: { type: Type.STRING, description: "Day label (e.g., Day 1)" },
-            focus: { type: Type.STRING, description: "What to study" },
-            action: { type: Type.STRING, description: "Actionable step" },
+            day: { type: Type.STRING, description: "Day label (e.g., Day 1, Day 2)" },
+            focus: { type: Type.STRING, description: "Main topic/chapter to study" },
+            action: { type: Type.STRING, description: "Detailed actionable steps" },
+            hours: { type: Type.NUMBER, description: "Estimated hours needed" },
+            exercises: { type: Type.STRING, description: "Practice problems or exercises" },
           },
-          required: ["day", "focus", "action"],
+          required: ["day", "focus", "action", "hours"],
         },
       },
     },
   });
 
   try {
-    // response.text is a getter property that returns the generated string output.
     const text = response.text || "[]";
     return JSON.parse(text);
   } catch (error) {
     console.error("Failed to parse AI response", error);
     return [];
+  }
+};
+
+export const chatWithAI = async (message: string, conversationHistory: Array<{role: string, content: string}> = []) => {
+  const ai = getAIClient();
+  
+  // Build conversation context
+  const contextMessages = conversationHistory.map(msg => 
+    `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`
+  ).join('\n\n');
+  
+  const fullPrompt = contextMessages 
+    ? `${contextMessages}\n\nUser: ${message}\n\nAssistant:`
+    : `You are a helpful academic assistant for university students. Help them with their studies, assignments, exam preparation, and academic questions. Be concise but thorough.\n\nUser: ${message}\n\nAssistant:`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: fullPrompt,
+  });
+
+  try {
+    return response.text || "I'm sorry, I couldn't generate a response.";
+  } catch (error) {
+    console.error("Chat AI failed", error);
+    return "I encountered an error. Please try again.";
   }
 };

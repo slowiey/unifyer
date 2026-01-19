@@ -3,6 +3,9 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Project, Exam, Priority, FileData, Task, CalendarSubscription, CalendarEvent, Folder, Module } from './types';
 import { Badge, ProgressBar } from './components/Shared';
 import { generateProjectBreakdown, generateStudyPlan } from './services/geminiService';
+import { useAuth } from './contexts/AuthContext';
+import LoginPage from './components/LoginPage';
+import AIChat from './components/AIChat';
 
 const PRIORITY_WEIGHTS: Record<Priority, number> = {
   High: 3,
@@ -165,6 +168,13 @@ const Footer: React.FC = () => (
 );
 
 const App: React.FC = () => {
+  const { isAuthenticated, user, logout } = useAuth();
+
+  // If not authenticated, show login page
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
+
   const [activeTab, setActiveTab] = useState<'dashboard' | 'projects' | 'exams' | 'calendar' | 'files' | 'course'>('dashboard');
   const [projects, setProjects] = useState<Project[]>(INITIAL_PROJECTS);
   const [exams, setExams] = useState<Exam[]>(INITIAL_EXAMS);
@@ -182,6 +192,7 @@ const App: React.FC = () => {
   const [showModuleModal, setShowModuleModal] = useState(false);
   const [showSubModal, setShowSubModal] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showAIChat, setShowAIChat] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
 
   // UI State
@@ -389,10 +400,10 @@ const App: React.FC = () => {
   const runStudyPlanAI = async (exam: Exam) => {
     setAiLoading(true);
     try {
-      const plan = await generateStudyPlan(exam.course, exam.date);
+      const plan = await generateStudyPlan(exam.course, exam.date, exam.notes);
       const newTasks: Task[] = plan.map((p: any) => ({
         id: Math.random().toString(36).substr(2, 9),
-        title: `${p.day}: ${p.focus} - ${p.action}`,
+        title: `${p.day}: ${p.focus} - ${p.action}${p.hours ? ` (${p.hours}h)` : ''}${p.exercises ? ` | ${p.exercises}` : ''}`,
         completed: false,
         priority: 'Medium'
       }));
@@ -820,13 +831,37 @@ const App: React.FC = () => {
                 onClick={() => setShowUserMenu(!showUserMenu)}
                 className="group flex items-center gap-3 p-1.5 pr-4 rounded-full hover:bg-slate-50 transition-all border border-transparent hover:border-slate-100"
               >
-                <div className="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center text-white font-bold text-xs">JD</div>
+                <div className="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center text-white font-bold text-xs">
+                  {user?.name.split(' ').map(n => n[0]).join('').toUpperCase() || 'U'}
+                </div>
                 <div className="text-left hidden lg:block">
-                   <p className="text-xs font-bold text-slate-800 leading-none">Jane Doe</p>
+                   <p className="text-xs font-bold text-slate-800 leading-none">{user?.name || 'User'}</p>
                    <p className="text-[9px] font-bold text-indigo-600 uppercase tracking-wider mt-1">Student</p>
                 </div>
                 <svg className={`w-3 h-3 text-slate-400 transition-transform ${showUserMenu ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
               </button>
+              
+              {/* User Menu Dropdown */}
+              {showUserMenu && (
+                <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 py-2 z-50">
+                  <div className="px-4 py-3 border-b border-slate-100">
+                    <p className="text-sm font-bold text-slate-900">{user?.name}</p>
+                    <p className="text-xs text-slate-500">{user?.email}</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      logout();
+                      setShowUserMenu(false);
+                    }}
+                    className="w-full px-4 py-3 text-left text-sm font-medium text-red-600 hover:bg-red-50 transition flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                    Log Out
+                  </button>
+                </div>
+              )}
            </div>
         </header>
 
@@ -837,7 +872,7 @@ const App: React.FC = () => {
                    <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-white/10 rounded-full blur-3xl" />
                    <div className="relative z-10">
                       <span className="text-xs font-bold uppercase tracking-[0.3em] text-indigo-200 block mb-4">Academic Status</span>
-                      <h1 className="text-5xl font-extrabold tracking-tight mb-4">Focus, Jane.</h1>
+                      <h1 className="text-5xl font-extrabold tracking-tight mb-4">Focus, {user?.name.split(' ')[0]}.</h1>
                       <p className="text-indigo-100 text-xl font-medium max-w-lg">Current credit target: {stats.totalCreditsGoal} CP. You've earned {stats.earnedCredits} so far.</p>
                    </div>
                    <div className="flex gap-4 relative z-10">
@@ -1031,6 +1066,20 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* AI Chat Floating Button */}
+      <button
+        onClick={() => setShowAIChat(true)}
+        className="fixed bottom-8 right-8 w-16 h-16 bg-gradient-to-br from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-full shadow-2xl hover:shadow-3xl transition-all flex items-center justify-center z-40 group"
+        title="Chat with AI Assistant"
+      >
+        <svg className="w-7 h-7 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+        </svg>
+      </button>
+
+      {/* AI Chat Modal */}
+      {showAIChat && <AIChat onClose={() => setShowAIChat(false)} />}
 
       <style>{`
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
