@@ -811,6 +811,46 @@ const StudioPage: React.FC = () => {
             </button>
           ))}
         </nav>
+
+        {/* Settings & Account Section */}
+        <div className="px-6 pb-6 space-y-1 border-t border-slate-100 pt-6 mt-4">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 mb-3">Account</p>
+          
+          {/* Email Display */}
+          <div className="px-6 py-3 rounded-xl bg-slate-50 mb-2">
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Email</p>
+            <p className="text-xs font-semibold text-slate-900 truncate">{user?.email}</p>
+          </div>
+
+          {/* Plan Badge */}
+          <div className="px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100 mb-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[9px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Current Plan</p>
+                <p className="text-xs font-bold text-indigo-900">Free Plan</p>
+              </div>
+              <span className="px-3 py-1 bg-indigo-600 text-white text-[10px] font-bold rounded-full">FREE</span>
+            </div>
+          </div>
+
+          {/* Settings Menu Items */}
+          {[
+            { id: 'theme', label: 'Theme', icon: 'M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01' },
+            { id: 'presets', label: 'Presets AI', icon: 'M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z' },
+            { id: 'billing', label: 'Manage Billing', icon: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' },
+          ].map(item => (
+            <button 
+              key={item.id}
+              onClick={() => console.log(`${item.label} clicked`)}
+              className="w-full flex items-center gap-4 px-6 py-3 rounded-xl transition-all text-sm font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} />
+              </svg>
+              {item.label}
+            </button>
+          ))}
+        </div>
       </aside>
 
       <main className="flex-1 md:ml-72 min-h-screen flex flex-col">
