@@ -5,6 +5,18 @@ import { generateProjectBreakdown, generateStudyPlan } from '../../shared/servic
 import { useAuth } from '../../shared/contexts/AuthContext';
 import AIChat from '../../shared/components/AIChat';
 
+// Calendar Types
+interface CalendarEvent {
+  id: string;
+  title: string;
+  date: string;
+  time?: string;
+  type: 'project' | 'exam' | 'custom';
+  color: string;
+  description?: string;
+  linkedId?: string; // Links to project or exam id
+}
+
 const PRIORITY_WEIGHTS: Record<Priority, number> = {
   High: 3,
   Medium: 2,
@@ -67,6 +79,27 @@ const INITIAL_EXAMS: Exam[] = [
   }
 ];
 
+const INITIAL_CUSTOM_EVENTS: CalendarEvent[] = [
+  {
+    id: 'ce1',
+    title: 'Study Group Meeting',
+    date: '2025-01-25',
+    time: '14:00',
+    type: 'custom',
+    color: 'emerald',
+    description: 'Weekly study group for CS301'
+  },
+  {
+    id: 'ce2',
+    title: 'Office Hours - Prof. Smith',
+    date: '2025-01-28',
+    time: '10:00',
+    type: 'custom',
+    color: 'amber',
+    description: 'Discuss kernel project questions'
+  }
+];
+
 const Footer: React.FC = () => (
   <footer className="mt-20 py-20 px-12 border-t border-slate-100 bg-white/50">
     <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
@@ -87,6 +120,7 @@ const Footer: React.FC = () => (
           <li className="hover:text-indigo-600 cursor-pointer transition-colors">Study Planner</li>
           <li className="hover:text-indigo-600 cursor-pointer transition-colors">Project Roadmaps</li>
           <li className="hover:text-indigo-600 cursor-pointer transition-colors">Grade Analytics</li>
+          <li className="hover:text-indigo-600 cursor-pointer transition-colors">Calendar Sync</li>
         </ul>
       </div>
       <div>
@@ -125,10 +159,11 @@ const StudioPage: React.FC = () => {
   const { user, logout } = useAuth();
   
   // Core State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'projects' | 'exams' | 'course'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'projects' | 'exams' | 'calendar' | 'course'>('dashboard');
   const [projects, setProjects] = useState<Project[]>(INITIAL_PROJECTS);
   const [exams, setExams] = useState<Exam[]>(INITIAL_EXAMS);
   const [modules, setModules] = useState<Module[]>(INITIAL_MODULES);
+  const [customEvents, setCustomEvents] = useState<CalendarEvent[]>(INITIAL_CUSTOM_EVENTS);
   
   // Selection State
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -139,9 +174,14 @@ const StudioPage: React.FC = () => {
   const [showProjectModal, setShowProjectModal] = useState(false);
   const [showExamModal, setShowExamModal] = useState(false);
   const [showModuleModal, setShowModuleModal] = useState(false);
+  const [showEventModal, setShowEventModal] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showAIChat, setShowAIChat] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
+
+  // Calendar State
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   // UI State
   const [aiLoading, setAiLoading] = useState(false);
@@ -185,6 +225,85 @@ const StudioPage: React.FC = () => {
     const eItems = exams.map(e => ({ ...e, type: 'exam' as const, sortDate: e.date, title: e.course }));
     return [...pItems, ...eItems].sort((a, b) => new Date(a.sortDate).getTime() - new Date(b.sortDate).getTime());
   }, [projects, exams]);
+
+  // Calendar Events - combines projects, exams, and custom events
+  const calendarEvents = useMemo((): CalendarEvent[] => {
+    const projectEvents: CalendarEvent[] = projects.map(p => ({
+      id: `p-${p.id}`,
+      title: p.title,
+      date: p.dueDate,
+      type: 'project',
+      color: 'indigo',
+      description: p.description,
+      linkedId: p.id
+    }));
+
+    const examEvents: CalendarEvent[] = exams.map(e => ({
+      id: `e-${e.id}`,
+      title: e.course,
+      date: e.date,
+      time: e.time,
+      type: 'exam',
+      color: 'rose',
+      description: e.notes,
+      linkedId: e.id
+    }));
+
+    return [...projectEvents, ...examEvents, ...customEvents];
+  }, [projects, exams, customEvents]);
+
+  // Calendar Helper Functions
+  const getDaysInMonth = (date: Date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDay = firstDay.getDay();
+    
+    const days: (number | null)[] = [];
+    
+    // Add empty slots for days before the first day of the month
+    for (let i = 0; i < startingDay; i++) {
+      days.push(null);
+    }
+    
+    // Add all days of the month
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push(i);
+    }
+    
+    return days;
+  };
+
+  const formatDateString = (year: number, month: number, day: number) => {
+    return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  };
+
+  const getEventsForDate = (dateString: string) => {
+    return calendarEvents.filter(event => event.date === dateString);
+  };
+
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    setCurrentMonth(prev => {
+      const newDate = new Date(prev);
+      if (direction === 'prev') {
+        newDate.setMonth(newDate.getMonth() - 1);
+      } else {
+        newDate.setMonth(newDate.getMonth() + 1);
+      }
+      return newDate;
+    });
+  };
+
+  const isToday = (day: number) => {
+    const today = new Date();
+    return (
+      day === today.getDate() &&
+      currentMonth.getMonth() === today.getMonth() &&
+      currentMonth.getFullYear() === today.getFullYear()
+    );
+  };
 
   // Click outside detection for user menu
   useEffect(() => {
@@ -297,6 +416,40 @@ const StudioPage: React.FC = () => {
     setEditingItem(null);
   };
 
+  const handleUpsertEvent = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const data: Partial<CalendarEvent> = {
+      title: formData.get('title') as string,
+      date: formData.get('date') as string,
+      time: formData.get('time') as string || undefined,
+      description: formData.get('description') as string,
+      color: formData.get('color') as string || 'emerald',
+    };
+
+    if (editingItem && editingItem.type === 'custom') {
+      setCustomEvents(prev => prev.map(ev => ev.id === editingItem.id ? { ...ev, ...data } as CalendarEvent : ev));
+    } else {
+      const newEvent: CalendarEvent = {
+        id: Math.random().toString(36).substr(2, 9),
+        title: data.title!,
+        date: data.date!,
+        time: data.time,
+        type: 'custom',
+        color: data.color!,
+        description: data.description,
+      };
+      setCustomEvents(prev => [...prev, newEvent]);
+    }
+    setShowEventModal(false);
+    setEditingItem(null);
+    setSelectedDate(null);
+  };
+
+  const handleDeleteEvent = (eventId: string) => {
+    setCustomEvents(prev => prev.filter(ev => ev.id !== eventId));
+  };
+
   const handleToggleTask = (itemId: string, taskId: string, type: 'project' | 'exam') => {
     if (type === 'project') {
       setProjects(prev => prev.map(p => {
@@ -389,6 +542,297 @@ const StudioPage: React.FC = () => {
     } else {
       setExams(prev => prev.map(e => e.id === id ? { ...e, files: [...e.files, newFile] } : e));
     }
+  };
+
+  // Calendar View
+  const renderCalendar = () => {
+    const days = getDaysInMonth(currentMonth);
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    const upcomingEvents = calendarEvents
+      .filter(e => new Date(e.date) >= new Date())
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .slice(0, 5);
+
+    return (
+      <div className="space-y-12 animate-fadeIn">
+        <header className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Calendar</h1>
+            <p className="text-slate-500 mt-1 font-medium">Track deadlines, exams, and personal events.</p>
+          </div>
+          <button 
+            onClick={() => { setEditingItem(null); setSelectedDate(null); setShowEventModal(true); }}
+            className="bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg flex items-center gap-2 hover:bg-emerald-700 transition-all"
+          >
+            + Add Event
+          </button>
+        </header>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+          {/* Main Calendar */}
+          <div className="lg:col-span-2 bg-white p-10 rounded-[3rem] border border-slate-200 shadow-sm">
+            {/* Calendar Header */}
+            <div className="flex items-center justify-between mb-8">
+              <h2 className="text-2xl font-bold text-slate-900">
+                {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+              </h2>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => navigateMonth('prev')}
+                  className="w-10 h-10 rounded-xl bg-slate-50 hover:bg-slate-100 flex items-center justify-center transition-all"
+                >
+                  <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <button 
+                  onClick={() => setCurrentMonth(new Date())}
+                  className="px-4 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-600 transition-all"
+                >
+                  Today
+                </button>
+                <button 
+                  onClick={() => navigateMonth('next')}
+                  className="w-10 h-10 rounded-xl bg-slate-50 hover:bg-slate-100 flex items-center justify-center transition-all"
+                >
+                  <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Day Names */}
+            <div className="grid grid-cols-7 gap-2 mb-4">
+              {dayNames.map(day => (
+                <div key={day} className="text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest py-2">
+                  {day}
+                </div>
+              ))}
+            </div>
+
+            {/* Calendar Grid */}
+            <div className="grid grid-cols-7 gap-2">
+              {days.map((day, index) => {
+                if (day === null) {
+                  return <div key={`empty-${index}`} className="aspect-square" />;
+                }
+
+                const dateString = formatDateString(
+                  currentMonth.getFullYear(),
+                  currentMonth.getMonth(),
+                  day
+                );
+                const dayEvents = getEventsForDate(dateString);
+                const hasEvents = dayEvents.length > 0;
+                const today = isToday(day);
+
+                return (
+                  <button
+                    key={day}
+                    onClick={() => {
+                      setSelectedDate(dateString);
+                    }}
+                    className={`aspect-square rounded-2xl p-2 flex flex-col items-center justify-start transition-all relative group ${
+                      today 
+                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' 
+                        : selectedDate === dateString
+                          ? 'bg-indigo-50 border-2 border-indigo-300'
+                          : 'bg-slate-50 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span className={`text-sm font-bold ${today ? 'text-white' : 'text-slate-700'}`}>
+                      {day}
+                    </span>
+                    {hasEvents && (
+                      <div className="flex gap-1 mt-1 flex-wrap justify-center">
+                        {dayEvents.slice(0, 3).map((event, i) => (
+                          <div
+                            key={i}
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              event.color === 'indigo' ? 'bg-indigo-500' :
+                              event.color === 'rose' ? 'bg-rose-500' :
+                              event.color === 'emerald' ? 'bg-emerald-500' :
+                              event.color === 'amber' ? 'bg-amber-500' :
+                              'bg-slate-400'
+                            } ${today ? 'ring-1 ring-white' : ''}`}
+                          />
+                        ))}
+                        {dayEvents.length > 3 && (
+                          <span className={`text-[8px] font-bold ${today ? 'text-white/70' : 'text-slate-400'}`}>
+                            +{dayEvents.length - 3}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Legend */}
+            <div className="flex gap-6 mt-8 pt-8 border-t border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-indigo-500" />
+                <span className="text-xs font-semibold text-slate-500">Projects</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-rose-500" />
+                <span className="text-xs font-semibold text-slate-500">Exams</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                <span className="text-xs font-semibold text-slate-500">Events</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Sidebar */}
+          <div className="space-y-8">
+            {/* Selected Date Events */}
+            {selectedDate && (
+              <div className="bg-white p-8 rounded-[3rem] border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-lg font-bold text-slate-900">
+                    {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { 
+                      weekday: 'long',
+                      month: 'short', 
+                      day: 'numeric' 
+                    })}
+                  </h3>
+                  <button 
+                    onClick={() => { setEditingItem(null); setShowEventModal(true); }}
+                    className="w-8 h-8 rounded-xl bg-emerald-50 hover:bg-emerald-100 flex items-center justify-center transition-all"
+                  >
+                    <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                    </svg>
+                  </button>
+                </div>
+                
+                <div className="space-y-3">
+                  {getEventsForDate(selectedDate).length > 0 ? (
+                    getEventsForDate(selectedDate).map(event => (
+                      <div 
+                        key={event.id}
+                        onClick={() => {
+                          if (event.type === 'project' && event.linkedId) {
+                            setActiveTab('projects');
+                            setSelectedProjectId(event.linkedId);
+                          } else if (event.type === 'exam' && event.linkedId) {
+                            setActiveTab('exams');
+                            setSelectedExamId(event.linkedId);
+                          } else if (event.type === 'custom') {
+                            setEditingItem(event);
+                            setShowEventModal(true);
+                          }
+                        }}
+                        className={`p-4 rounded-2xl border cursor-pointer transition-all hover:shadow-md ${
+                          event.color === 'indigo' ? 'bg-indigo-50 border-indigo-100 hover:border-indigo-300' :
+                          event.color === 'rose' ? 'bg-rose-50 border-rose-100 hover:border-rose-300' :
+                          event.color === 'emerald' ? 'bg-emerald-50 border-emerald-100 hover:border-emerald-300' :
+                          event.color === 'amber' ? 'bg-amber-50 border-amber-100 hover:border-amber-300' :
+                          'bg-slate-50 border-slate-100 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <span className={`text-[9px] font-bold uppercase tracking-widest ${
+                              event.color === 'indigo' ? 'text-indigo-500' :
+                              event.color === 'rose' ? 'text-rose-500' :
+                              event.color === 'emerald' ? 'text-emerald-500' :
+                              event.color === 'amber' ? 'text-amber-500' :
+                              'text-slate-500'
+                            }`}>
+                              {event.type}
+                            </span>
+                            <h4 className="font-bold text-slate-800 mt-1">{event.title}</h4>
+                            {event.time && (
+                              <p className="text-xs text-slate-500 mt-1">{event.time}</p>
+                            )}
+                          </div>
+                          {event.type === 'custom' && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteEvent(event.id);
+                              }}
+                              className="p-1 hover:bg-white/50 rounded-lg transition-all"
+                            >
+                              <svg className="w-4 h-4 text-slate-400 hover:text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-slate-400 font-medium text-center py-8">No events scheduled</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Upcoming Events */}
+            <div className="bg-slate-900 p-8 rounded-[3rem] text-white">
+              <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-6">Upcoming</h3>
+              <div className="space-y-4">
+                {upcomingEvents.map(event => (
+                  <div 
+                    key={event.id}
+                    onClick={() => {
+                      if (event.type === 'project' && event.linkedId) {
+                        setActiveTab('projects');
+                        setSelectedProjectId(event.linkedId);
+                      } else if (event.type === 'exam' && event.linkedId) {
+                        setActiveTab('exams');
+                        setSelectedExamId(event.linkedId);
+                      }
+                    }}
+                    className="flex items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all cursor-pointer"
+                  >
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                      event.color === 'indigo' ? 'bg-indigo-500' :
+                      event.color === 'rose' ? 'bg-rose-500' :
+                      event.color === 'emerald' ? 'bg-emerald-500' :
+                      event.color === 'amber' ? 'bg-amber-500' :
+                      'bg-slate-500'
+                    }`}>
+                      {event.type === 'project' ? (
+                        <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2H5a2 2 0 00-2 2v2M7 7h10" />
+                        </svg>
+                      ) : event.type === 'exam' ? (
+                        <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                        </svg>
+                      ) : (
+                        <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold truncate">{event.title}</p>
+                      <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                        {new Date(event.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        {event.time && ` • ${event.time}`}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {upcomingEvents.length === 0 && (
+                  <p className="text-sm text-slate-500 font-medium text-center py-4">No upcoming events</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   // Views
@@ -751,6 +1195,7 @@ const StudioPage: React.FC = () => {
             { id: 'dashboard', label: 'Overview', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
             { id: 'projects', label: 'Projects', icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2H5a2 2 0 00-2 2v2M7 7h10' },
             { id: 'exams', label: 'Exams & Grades', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4' },
+            { id: 'calendar', label: 'Calendar', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
             { id: 'course', label: 'Curriculum', icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253' },
           ].map(item => (
             <button 
@@ -947,6 +1392,8 @@ const StudioPage: React.FC = () => {
              </div>
           )}
 
+          {activeTab === 'calendar' && renderCalendar()}
+
           {activeTab === 'course' && renderCourseOverview()}
 
           {activeTab === 'projects' && selectedProjectId && renderProjectDetail(projects.find(p => p.id === selectedProjectId)!)}
@@ -1054,6 +1501,66 @@ const StudioPage: React.FC = () => {
                    <textarea name="description" defaultValue={editingItem?.description} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-bold outline-none h-32 resize-none" />
                 </div>
                 <button type="submit" className="w-full bg-indigo-600 text-white py-5 rounded-2xl font-bold shadow-2xl hover:bg-indigo-700 transition-all">Save Module</button>
+             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Event Modal */}
+      {showEventModal && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xl z-[100] flex items-center justify-center p-8 animate-fadeIn">
+          <div className="bg-white w-full max-w-xl rounded-[3rem] shadow-2xl animate-slideIn">
+             <div className="p-10 border-b border-slate-100 flex justify-between items-center">
+                <h2 className="text-3xl font-bold">{editingItem ? 'Edit Event' : 'New Event'}</h2>
+                <button onClick={() => { setShowEventModal(false); setEditingItem(null); setSelectedDate(null); }} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+             </div>
+             <form onSubmit={handleUpsertEvent} className="p-10 space-y-6">
+                <div>
+                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">Event Title</label>
+                   <input name="title" required defaultValue={editingItem?.title} placeholder="e.g. Study Group Meeting" className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-bold outline-none" />
+                </div>
+                <div className="grid grid-cols-2 gap-6">
+                   <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">Date</label>
+                      <input name="date" type="date" required defaultValue={editingItem?.date || selectedDate || ''} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-bold outline-none" />
+                   </div>
+                   <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">Time (Optional)</label>
+                      <input name="time" type="time" defaultValue={editingItem?.time} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-bold outline-none" />
+                   </div>
+                </div>
+                <div>
+                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">Color</label>
+                   <div className="flex gap-3">
+                      {['emerald', 'amber', 'violet', 'cyan', 'pink'].map(color => (
+                        <label key={color} className="cursor-pointer">
+                          <input 
+                            type="radio" 
+                            name="color" 
+                            value={color} 
+                            defaultChecked={editingItem?.color === color || (!editingItem && color === 'emerald')}
+                            className="sr-only peer" 
+                          />
+                          <div className={`w-10 h-10 rounded-xl transition-all peer-checked:ring-2 peer-checked:ring-offset-2 ${
+                            color === 'emerald' ? 'bg-emerald-500 peer-checked:ring-emerald-500' :
+                            color === 'amber' ? 'bg-amber-500 peer-checked:ring-amber-500' :
+                            color === 'violet' ? 'bg-violet-500 peer-checked:ring-violet-500' :
+                            color === 'cyan' ? 'bg-cyan-500 peer-checked:ring-cyan-500' :
+                            'bg-pink-500 peer-checked:ring-pink-500'
+                          }`} />
+                        </label>
+                      ))}
+                   </div>
+                </div>
+                <div>
+                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">Description (Optional)</label>
+                   <textarea name="description" defaultValue={editingItem?.description} placeholder="Add notes or details..." className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-bold outline-none h-24 resize-none" />
+                </div>
+                <button type="submit" className="w-full bg-emerald-600 text-white py-5 rounded-2xl font-bold shadow-2xl hover:bg-emerald-700 transition-all">
+                  {editingItem ? 'Update Event' : 'Create Event'}
+                </button>
              </form>
           </div>
         </div>
