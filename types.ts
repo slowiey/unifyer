@@ -1,4 +1,3 @@
-
 export type Priority = 'Low' | 'Medium' | 'High';
 
 export interface Task {
@@ -63,22 +62,4 @@ export interface Exam {
   vaultFolderId?: string;
   progress: number;
   moduleId?: string; // Associated module
-}
-
-export interface CalendarEvent {
-  id: string;
-  summary: string;
-  start: Date;
-  end: Date;
-  location?: string;
-  description?: string;
-  type: 'lesson' | 'exam' | 'other';
-}
-
-export interface CalendarSubscription {
-  id: string;
-  name: string;
-  url: string;
-  events: CalendarEvent[];
-  color: string;
 }
