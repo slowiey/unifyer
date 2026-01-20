@@ -1,6 +1,6 @@
-
 import React from 'react';
-import { Priority } from '../types';
+
+export type Priority = 'High' | 'Medium' | 'Low';
 
 export const Badge: React.FC<{ priority: Priority }> = ({ priority }) => {
   const colors = {
@@ -18,7 +18,7 @@ export const Badge: React.FC<{ priority: Priority }> = ({ priority }) => {
 
 export const ProgressBar: React.FC<{ progress: number }> = ({ progress }) => (
   <div className="w-full bg-slate-200 rounded-full h-2 mt-2">
-    <div 
+  <div 
       className="bg-indigo-600 h-2 rounded-full transition-all duration-500 ease-out"
       style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
     />
